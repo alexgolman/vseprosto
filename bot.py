@@ -1,16 +1,21 @@
-import asyncio
 import os
+import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
+from aiogram.types import Update
 import config
 import database
 
+# Инициализация БД
 database.init_db()
 
-bot = Bot(token=config.TOKEN)
+# Токен и бот
+TOKEN = config.TOKEN
+bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+# Список админов
 ADMINS = config.ADMINS
 
 def is_admin(user_id):
@@ -139,9 +144,34 @@ async def change_status(message: types.Message):
     except:
         await message.answer("Используйте: /status ID статус")
 
+# --- WEBHOOK (специально для Render) ---
+async def on_startup():
+    WEBHOOK_URL = f"https://vseprosto.onrender.com/webhook"
+    await bot.set_webhook(WEBHOOK_URL)
+
 async def main():
-    port = int(os.environ.get("PORT", 8080))
-    await dp.start_polling(bot, skip_updates=True)
+    await on_startup()
+    # Запускаем веб-сервер внутри бота, чтобы Render увидел порт
+    from aiohttp import web
+    app = web.Application()
+    app.router.add_post("/webhook", lambda request: handle_webhook(request))
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    await site.start()
+    print("Бот работает на Webhook!")
+    await asyncio.Event().wait()  # Держим процесс живым
+
+# Обработчик вебхуков
+async def handle_webhook(request):
+    try:
+        update = Update.model_validate_json(await request.text())
+        await dp.feed_update(bot, update)
+        return web.Response(text="OK", status=200)
+    except Exception as e:
+        print(f"Ошибка обработки: {e}")
+        return web.Response(text="Error", status=500)
 
 if __name__ == "__main__":
     asyncio.run(main())
