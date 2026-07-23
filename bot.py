@@ -1,17 +1,14 @@
 import asyncio
+import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 import config
 import database
-import ssl
-import aiohttp
-import asyncio
 
 database.init_db()
 
-connector = aiohttp.TCPConnector(ssl=False)
-bot = Bot(token=config.TOKEN, session=types.DEFAULT_SESSION, connector=connector)
+bot = Bot(token=config.TOKEN)
 dp = Dispatcher()
 
 ADMINS = config.ADMINS
@@ -143,8 +140,8 @@ async def change_status(message: types.Message):
         await message.answer("Используйте: /status ID статус")
 
 async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot, skip_updates=True, polling_timeout=30)
+    port = int(os.environ.get("PORT", 8080))
+    await dp.start_polling(bot, skip_updates=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
