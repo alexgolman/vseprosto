@@ -1,21 +1,18 @@
 import os
 import asyncio
+import aiohttp
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Update
 from aiogram.filters import Command
-from aiogram.types import Update
 import config
 import database
 
-# Инициализация БД
 database.init_db()
 
-# Токен и бот
 TOKEN = config.TOKEN
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-
-# Список админов
 ADMINS = config.ADMINS
 
 def is_admin(user_id):
@@ -144,33 +141,31 @@ async def change_status(message: types.Message):
     except:
         await message.answer("Используйте: /status ID статус")
 
-# --- WEBHOOK (специально для Render) ---
+# === WEBHOOK ДЛЯ RENDER ===
 async def on_startup():
-    WEBHOOK_URL = f"https://vseprosto.onrender.com/webhook"
-    await bot.set_webhook(WEBHOOK_URL)
+    await bot.set_webhook(config.WEBHOOK_URL)
 
 async def main():
     await on_startup()
-    # Запускаем веб-сервер внутри бота, чтобы Render увидел порт
-    from aiohttp import web
     app = web.Application()
-    app.router.add_post("/webhook", lambda request: handle_webhook(request))
-
+    app.router.add_post("/webhook", handle_webhook)
+    
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, host="0.0.0.0", port=port)
     await site.start()
-    print("Бот работает на Webhook!")
-    await asyncio.Event().wait()  # Держим процесс живым
+    print(f"✅ Бот запущен на порту {port} через Webhook!")
+    await asyncio.Event().wait()
 
-# Обработчик вебхуков
 async def handle_webhook(request):
     try:
-        update = Update.model_validate_json(await request.text())
+        data = await request.text()
+        update = Update.model_validate_json(data)
         await dp.feed_update(bot, update)
         return web.Response(text="OK", status=200)
     except Exception as e:
-        print(f"Ошибка обработки: {e}")
+        print(f"Ошибка вебхука: {e}")
         return web.Response(text="Error", status=500)
 
 if __name__ == "__main__":
